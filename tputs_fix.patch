@@ -1,0 +1,10 @@
+diff --git a/src/output.cpp b/src/output.cpp
+index abc123..def456 100644
+--- a/src/output.cpp
++++ b/src/output.cpp
+@@ -304,7 +304,7 @@ int outputter_t::term_puts(const char *str, int affcnt) {
+     // Like fish_tparm, we just cast it to unconst, that should work everywhere.
+-    int res = tputs(const_cast<char *>(str), affcnt, tputs_writer);
++    int res = tputs(const_cast<char *>(str), affcnt, [](int ch) { return outputter_t::instance().writeb(static_cast<char>(ch)); });
+     return res;
+ }

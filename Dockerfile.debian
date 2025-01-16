@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+FROM gcc:latest AS gcc-builder
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ENV PLATFORM=$BUILDPLATFORM
+RUN echo "Target: $TARGETPLATFORM"
+ENV VERSION='3.7.1'
+
+# Install required packages for building fish
+RUN apt-get update && apt-get -o "Acquire::https::Verify-Peer=false" install -y \
+    build-essential \
+    cmake \
+    git \
+    libncurses5-dev \
+    libncursesw5-dev
+RUN apt update && apt -o "Acquire::https::Verify-Peer=false" install -y \
+    ninja-build \
+    cmake 
+# build-base cmake ncurses-static pcre2-dev git ninja
+RUN git clone --branch $VERSION --depth 1 https://github.com/fish-shell/fish-shell.git /tmp/fish
+
+# Build fish with CMake + Ninja
+WORKDIR /tmp/fish
+RUN cmake -G Ninja \
+    -DBUILD_STATIC=ON \
+    -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
+    -DCMAKE_EXE_LINKER_FLAGS="-static" \
+    . \
+    && ninja \
+    && ninja install
