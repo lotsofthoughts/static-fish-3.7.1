@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1
+
+ARG OSXCROSS_VERSION=latest
+FROM --platform=$BUILDPLATFORM crazymax/osxcross:${OSXCROSS_VERSION}-alpine AS osxcross
+FROM --platform=$BUILDPLATFORM tonistiigi/xx:1.1.2 AS xx
+
+FROM --platform=$BUILDPLATFORM alpine:latest AS builder
+COPY --from=xx / /
+COPY --from=osxcross /osxcross /osxcross
+RUN apk add --no-check-certificate --update --no-cache clang lld musl-dev
+RUN xx-apk add --no-check-certificate --update --no-cache gcc g++ musl-dev
+
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ENV PLATFORM=$BUILDPLATFORM
+RUN echo "Target: $TARGETPLATFORM"
+ENV VERSION='3.7.1'
+
+RUN echo -e "http://dl-cdn.alpinelinux.org/alpine/latest-stable/main\nhttp://dl-cdn.alpinelinux.org/alpine/latest-stable/community" > /etc/apk/repositories
+RUN apk add --repository http://dl-cdn.alpinelinux.org/alpine/latest-stable/main --no-check-certificate --update --no-cache patch build-base cmake ncurses-static pcre2-dev git ninja
+RUN git clone --branch $VERSION --depth 1 https://github.com/fish-shell/fish-shell.git /tmp/fish
+
+# Set the target platform to arm64
+ENV PATH="/osxcross/bin:$PATH"
+ENV LD_LIBRARY_PATH="/osxcross/lib"
+ENV CC=o64-clang
+ENV CXX=o64-clang++
+ENV CFLAGS="-target arm64-apple-darwin -mmacosx-version-min=10.15"
+ENV CXXFLAGS="-target arm64-apple-darwin -mmacosx-version-min=10.15"
+ENV LDFLAGS="-target arm64-apple-darwin -mmacosx-version-min=10.15"
+ENV OSXCROSS_TARGET=arm_64-apple-darwin18
+
+# Copy and apply the patch
+WORKDIR /tmp/fish
+COPY . .
+RUN cp -f CMakeLists2.txt CMakeLists.txt
+RUN cp -f PCRE2.cmake cmake/PCRE2.cmake
+RUN cp -f output.cpp src/output.cpp
+RUN cp -f /usr/lib/libtinfo.a /usr/lib/libtinfo.so
+
+# Configure and build Fish statically
+RUN cmake -G Ninja \
+-DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_C_COMPILER=$CC \
+-DCMAKE_CXX_COMPILER=$CXX \
+-DCMAKE_INSTALL_PREFIX=/usr/local . \
+&& ninja \
+&& ninja install
+ENTRYPOINT ["fish"]

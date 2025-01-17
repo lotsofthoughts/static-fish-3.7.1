@@ -12,20 +12,47 @@ RUN apt-get update && apt-get -o "Acquire::https::Verify-Peer=false" install -y 
     cmake \
     git \
     libncurses5-dev \
-    libncursesw5-dev
-RUN apt update && apt -o "Acquire::https::Verify-Peer=false" install -y \
-    ninja-build \
-    cmake 
+    libncursesw5-dev \
+    libtinfo-dev \
+    ninja-build
+
 # build-base cmake ncurses-static pcre2-dev git ninja
 RUN git clone --branch $VERSION --depth 1 https://github.com/fish-shell/fish-shell.git /tmp/fish
 
-# Build fish with CMake + Ninja
+# Set the target platform to arm64
+ENV CC="gcc"
+ENV CXX="g++"
+ENV CFLAGS="-static -march=armv8-a"
+ENV CXXFLAGS="-static -march=armv8-a"
+ENV WCHAR_T_BITS=32
+ENV LDFLAGS -static
+
+# Copy and apply the patch
 WORKDIR /tmp/fish
+COPY . .
+RUN cp -f CMakeLists2.txt CMakeLists.txt
+RUN cp -f PCRE2.cmake cmake/PCRE2.cmake
+RUN cp -f output.cpp src/output.cpp
+RUN cp -f /usr/lib/libtinfo.a /usr/lib/libtinfo.so
+
+# Configure and build Fish statically
 RUN cmake -G Ninja \
-    -DBUILD_STATIC=ON \
-    -DCMAKE_INSTALL_PREFIX=/usr/local \
-    -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
-    -DCMAKE_EXE_LINKER_FLAGS="-static" \
-    . \
-    && ninja \
-    && ninja install
+-DBUILD_STATIC=ON \
+-DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
+-DFISH_USE_SYSTEM_PCRE2=ON \
+-DCURSES_LIBRARY="/usr/lib/libcurses.a" \
+-DCURSES_INCLUDE_DIR="/usr/include" \
+-DTINFO_LIBRARY="/usr/lib/libtinfo.a" \
+-DCMAKE_EXE_LINKER_FLAGS="-static" \
+-DPCRE2_LIBRARIES="/usr/lib/libpcre2-32.a" \
+-DPCRE2_INCLUDE_DIRS="/usr/include" \
+-DCMAKE_INSTALL_PREFIX=/usr/local . \
+&& ninja \
+&& ninja install
+ENTRYPOINT ["fish"]
+
+# # Final stage for a clean binary
+# FROM scratch AS final
+# COPY --from=builder /usr/local/bin/fish /fish
+# ENTRYPOINT ["fish"]
